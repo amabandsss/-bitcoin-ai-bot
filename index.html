@@ -87,7 +87,10 @@ let prices = [];
 
 function updateSignal(id, reasonId, signal, reason) {
   const el = document.getElementById(id);
-  el.textContent = signal;
+  el.textContent =
+  signal === "UP BIAS" ? "🟢 BUY UP" :
+  signal === "DOWN BIAS" ? "🔴 BUY DOWN" :
+  "🟡 WAIT";
   el.className = "signal " +
     (signal === "UP BIAS" ? "up" :
      signal === "DOWN BIAS" ? "down" : "wait");
