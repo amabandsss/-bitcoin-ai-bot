@@ -1,29 +1,231 @@
-₿ Bitcoin • Signal Monitor
-Live price monitoring • Experimental 1-minute and 5-minute momentum signals • No automatic trades
-BTC/USD · Coinbase
-—
-Connecting…
-Data collection
-Waiting…
-No verified price observations yet
-Next 1 minute · momentum
-WAIT
-Collecting price history
-Next 5 minutes · momentum
-WAIT
-Collecting price history
-Bitcoin price history (this session)
-Collecting price history…
-Kalshi Bitcoin market (optional)
-Enter an exact market ticker or try discovery. Some browsers block Kalshi's public API.
-Load market Find BTC markets
-No market selected.
-YES price
-—
-NO price
-—
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bitcoin AI Signal Bot</title>
 
-Prices are indicative, not guaranteed executable quotes. Verify the contract's exact YES/NO meaning and settlement rules directly on Kalshi.
-How signals work
-The 1-minute signal compares roughly 30 and 60 seconds of observed price changes. The 5-minute signal compares roughly 2 and 5 minutes. Both require enough fresh observations and consistent direction; otherwise they show WAIT. These are simple momentum indicators, not AI predictions, tested probabilities, or buy recommendations. They do not account for Kalshi fees, spreads, or market settlement rules.
-Keep this page open; iPad browsers may suspend updates in the background. Missing or blocked live data always produces WAIT.
+<style>
+body {
+  background: #0b1020;
+  color: white;
+  font-family: Arial, sans-serif;
+  text-align: center;
+  padding: 15px;
+}
+
+h1 { color: #00d4ff; }
+
+.card {
+  background: #192440;
+  padding: 20px;
+  margin: 15px auto;
+  border-radius: 15px;
+  max-width: 500px;
+}
+
+.price {
+  font-size: 35px;
+  font-weight: bold;
+}
+
+.signal {
+  font-size: 32px;
+  font-weight: bold;
+}
+
+.up { color: #00ff88; }
+.down { color: #ff4444; }
+.wait { color: #ffcc00; }
+
+small { color: #aab8d0; }
+</style>
+</head>
+
+<body>
+
+<h1>₿ Bitcoin AI Signal Bot</h1>
+
+<p>Live Bitcoin Price & Momentum Monitor</p>
+
+<div class="card">
+<h2>Bitcoin Price</h2>
+<div class="price" id="price">Connecting...</div>
+<small id="status">Waiting for live data</small>
+</div>
+
+<div class="card">
+<h2>Next 1 Minute</h2>
+<div class="signal wait" id="signal1">WAIT</div>
+<p id="reason1">Collecting price history...</p>
+</div>
+
+<div class="card">
+<h2>Next 5 Minutes</h2>
+<div class="signal wait" id="signal5">WAIT</div>
+<p id="reason5">Collecting price history...</p>
+</div>
+
+<div class="card">
+<h2>Bitcoin Price History</h2>
+<canvas id="chart" width="340" height="180"
+style="width:100%;max-width:500px"></canvas>
+<p id="history">Waiting for prices...</p>
+</div>
+
+<div class="card">
+<h3>Important</h3>
+<p>
+Signals estimate momentum from recent prices.
+They do not predict future prices with certainty.
+No automatic trades are placed.
+</p>
+</div>
+
+<script>
+let prices = [];
+
+function updateSignal(id, reasonId, signal, reason) {
+  const el = document.getElementById(id);
+  el.textContent = signal;
+  el.className = "signal " +
+    (signal === "UP BIAS" ? "up" :
+     signal === "DOWN BIAS" ? "down" : "wait");
+
+  document.getElementById(reasonId).textContent = reason;
+}
+
+function getPastPrice(seconds) {
+  const target = Date.now() - seconds * 1000;
+  const eligible = prices.filter(x => x.time <= target);
+  return eligible.length ? eligible[eligible.length - 1].price : null;
+}
+
+function analyze() {
+  if (!prices.length) return;
+
+  const latest = prices[prices.length - 1];
+
+  if (Date.now() - latest.time > 15000) {
+    updateSignal("signal1", "reason1", "WAIT", "Price feed is stale");
+    updateSignal("signal5", "reason5", "WAIT", "Price feed is stale");
+    return;
+  }
+
+  const now = latest.price;
+
+  const p30 = getPastPrice(30);
+  const p60 = getPastPrice(60);
+  const p150 = getPastPrice(150);
+  const p300 = getPastPrice(300);
+
+  function check(shortPrice, longPrice, id, reasonId) {
+    if (!shortPrice || !longPrice) {
+      updateSignal(id, reasonId, "WAIT", "Collecting enough live data...");
+      return;
+    }
+
+    const shortReturn = (now / shortPrice - 1) * 100;
+    const longReturn = (now / longPrice - 1) * 100;
+
+    if (Math.abs(shortReturn) < 0.035 ||
+        Math.sign(shortReturn) !== Math.sign(longReturn)) {
+      updateSignal(id, reasonId, "WAIT", "No consistent momentum");
+    } else {
+      const direction = shortReturn > 0 ? "UP BIAS" : "DOWN BIAS";
+      updateSignal(
+        id, reasonId, direction,
+        "Recent change: " + shortReturn.toFixed(3) + "%"
+      );
+    }
+  }
+
+  check(p30, p60, "signal1", "reason1");
+  check(p150, p300, "signal5", "reason5");
+}
+
+function drawChart() {
+  const canvas = document.getElementById("chart");
+  const ctx = canvas.getContext("2d");
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  if (prices.length < 2) return;
+
+  const values = prices.map(x => x.price);
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = Math.max(max - min, 1);
+
+  const first = prices[0].time;
+  const duration = Math.max(prices[prices.length - 1].time - first, 1);
+
+  ctx.beginPath();
+  ctx.strokeStyle = "#00d4ff";
+  ctx.lineWidth = 3;
+
+  prices.forEach((point, i) => {
+    const x = 10 + (point.time - first) / duration * (canvas.width - 20);
+    const y = canvas.height - 10 -
+      (point.price - min) / range * (canvas.height - 20);
+
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  });
+
+  ctx.stroke();
+}
+
+function addPrice(price) {
+  if (!Number.isFinite(price) || price <= 0) return;
+
+  const time = Date.now();
+
+  prices.push({ time, price });
+
+  prices = prices.filter(x => time - x.time <= 600000);
+
+  document.getElementById("price").textContent =
+    "$" + price.toLocaleString("en-US", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    });
+
+  document.getElementById("status").textContent =
+    "Updated: " + new Date().toLocaleTimeString();
+
+  document.getElementById("history").textContent =
+    prices.length + " price observations collected";
+
+  drawChart();
+  analyze();
+}
+
+async function fetchPrice() {
+  try {
+    const response = await fetch(
+      "https://api.exchange.coinbase.com/products/BTC-USD/ticker",
+      { cache: "no-store" }
+    );
+
+    if (!response.ok) throw new Error("Price request failed");
+
+    const data = await response.json();
+    addPrice(Number(data.price));
+
+  } catch (error) {
+    document.getElementById("status").textContent =
+      "Live price unavailable. Retrying...";
+
+    updateSignal("signal1", "reason1", "WAIT", "Checking live feed");
+    updateSignal("signal5", "reason5", "WAIT", "Checking live feed");
+  }
+}
+
+fetchPrice();
+setInterval(fetchPrice, 5000);
+setInterval(analyze, 1000);
+</script>
+
+</body>
+</html>
